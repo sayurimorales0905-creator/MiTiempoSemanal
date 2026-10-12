@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Academic & Professional Color Palette -->
+    <color name="primary_academic">#1E3A8A</color> <!-- Deep Navy Blue -->
+    <color name="primary_variant">#1E40AF</color>
+    <color name="secondary_academic">#0D9488</color> <!-- Teal Accent -->
+    <color name="background_academic">#F8FAFC</color> <!-- Slate 50 -->
+    <color name="surface_academic">#FFFFFF</color> <!-- White -->
+    <color name="text_primary">#0F172A</color> <!-- Slate 900 -->
+    <color name="text_secondary">#475569</color> <!-- Slate 600 -->
+    <color name="divider_color">#E2E8F0</color> <!-- Slate 200 -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

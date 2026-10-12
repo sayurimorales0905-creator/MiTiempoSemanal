@@ -50,7 +50,7 @@ class CategoriesActivity : AppCompatActivity() {
         }
         cursor.close()
 
-        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, categoryList)
+        val adapter = object : ArrayAdapter<String>(this, R.layout.item_row, R.id.tvItemTitle, categoryList) {}
         lvCategories.adapter = adapter
 
         // Al hacer clic, permite editar o eliminar con confirmación

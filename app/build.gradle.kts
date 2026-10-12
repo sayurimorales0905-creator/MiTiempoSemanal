@@ -12,8 +12,8 @@ android {
         applicationId = "com.senati.mitiemposemanal.smorales"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2 // Cambiado de 1 a 2[cite: 7]
+        versionName = "0.2.0" // Cambiado de "0.1.0" a "0.2.0"[cite: 7]
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -26,7 +26,10 @@ android {
             }
         }
     }
+
+    // Configuración agregada para Desugaring (Fechas modernas en API 24)[cite: 7]
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -41,4 +44,7 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+
+    // Dependencia agregada para Desugaring[cite: 7]
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
