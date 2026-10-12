@@ -4,9 +4,9 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
-    android:padding="16dp">
+    android:padding="24dp">
 
-
+    <!-- Requisito: Nombre del estudiante y versión -->
     <TextView
         android:id="@+id/tvHeader"
         android:layout_width="wrap_content"
@@ -14,12 +14,19 @@
         android:text="Sayuri Morales. v0.1.0 (1)"
         android:textSize="18sp"
         android:textStyle="bold"
-        android:layout_marginBottom="24dp" />
+        android:layout_marginBottom="32dp" />
 
-    <TextView
-        android:layout_width="wrap_content"
+    <Button
+        android:id="@+id/btnManageCategories"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="¡Bienvenido a MiTiempoSemanal!"
-        android:textSize="16sp" />
+        android:text="Gestionar Categorías (HU-01)"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btnManageTasks"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Gestionar Tareas (HU-02)" />
 
 </LinearLayout>

@@ -2,6 +2,7 @@ package com.senati.mitiemposemanal
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
@@ -11,12 +12,10 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         private const val DATABASE_NAME = "mi_tiempo_semanal.db"
         private const val DATABASE_VERSION = 1
 
-        // Tabla Categorías
         const val TABLE_CATEGORIES = "categories"
         const val COL_CAT_ID = "id"
         const val COL_CAT_NAME = "name"
 
-        // Tabla Tareas
         const val TABLE_TASKS = "tasks"
         const val COL_TASK_ID = "id"
         const val COL_TASK_NAME = "name"
@@ -36,8 +35,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 
         db?.execSQL(createCategoryTable)
         db?.execSQL(createTaskTable)
-
-        // Criterio HU-01: Al instalar la app ya existen 4 categorías por defecto
         insertInitialCategories(db)
     }
 
@@ -50,43 +47,87 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
     private fun insertInitialCategories(db: SQLiteDatabase?) {
         val defaultCategories = arrayOf("Estudio", "Trabajo", "Descanso", "Ocio")
         for (cat in defaultCategories) {
-            val values = ContentValues().apply {
-                put(COL_CAT_NAME, cat)
-            }
+            val values = ContentValues().apply { put(COL_CAT_NAME, cat) }
             db?.insert(TABLE_CATEGORIES, null, values)
         }
     }
 
-    // --- MÉTODOS PARA CATEGORÍAS (HU-01) ---
+    // --- HU-01: GESTIÓN DE CATEGORÍAS ---
     fun addCategory(name: String): Boolean {
         val db = this.writableDatabase
-        val values = ContentValues().apply {
-            put(COL_CAT_NAME, name)
+        val values = ContentValues().apply { put(COL_CAT_NAME, name) }
+        return try {
+            db.insertOrThrow(TABLE_CATEGORIES, null, values) != -1L
+        } catch (e: Exception) {
+            false // Retorna falso si el nombre ya existe (UNIQUE)
         }
-        val result = db.insert(TABLE_CATEGORIES, null, values)
-        return result != -1L // Retorna falso si el nombre ya existe (por el UNIQUE)
+    }
+
+    fun getAllCategories(): Cursor {
+        val db = this.readableDatabase
+        return db.rawQuery("SELECT * FROM $TABLE_CATEGORIES", null)
+    }
+
+    fun updateCategory(id: Int, newName: String): Boolean {
+        val db = this.writableDatabase
+        val values = ContentValues().apply { put(COL_CAT_NAME, newName) }
+        return try {
+            db.update(TABLE_CATEGORIES, values, "$COL_CAT_ID = ?", arrayOf(id.toString())) > 0
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun deleteCategory(categoryId: Int): Boolean {
         val db = this.writableDatabase
-        // Verificar si la categoría tiene tareas asociadas
+        // Verificar si tiene tareas asociadas
         val cursor = db.rawQuery("SELECT * FROM $TABLE_TASKS WHERE $COL_TASK_CAT_ID = ?", arrayOf(categoryId.toString()))
         if (cursor.count > 0) {
             cursor.close()
-            return false // Criterio: Si la categoría tiene tareas, no se permite eliminarla
+            return false // No se permite eliminar si tiene tareas
         }
         cursor.close()
         return db.delete(TABLE_CATEGORIES, "$COL_CAT_ID = ?", arrayOf(categoryId.toString())) > 0
     }
 
-    // --- MÉTODOS PARA TAREAS (HU-02) ---
+    // --- HU-02: GESTIÓN DE TAREAS ---
     fun addTask(name: String, categoryId: Int): Boolean {
+        if (name.isBlank()) return false
         val db = this.writableDatabase
         val values = ContentValues().apply {
             put(COL_TASK_NAME, name)
             put(COL_TASK_CAT_ID, categoryId)
         }
-        val result = db.insert(TABLE_TASKS, null, values)
-        return result != -1L // Retorna falso si el nombre de la tarea se repite
+        return try {
+            db.insertOrThrow(TABLE_TASKS, null, values) != -1L
+        } catch (e: Exception) {
+            false // Retorna falso si se repite el nombre
+        }
+    }
+
+    fun getAllTasksWithCategory(): Cursor {
+        val db = this.readableDatabase
+        val query = "SELECT t.$COL_TASK_ID, t.$COL_TASK_NAME, c.$COL_CAT_NAME AS category_name, t.$COL_TASK_CAT_ID " +
+                "FROM $TABLE_TASKS t INNER JOIN $TABLE_CATEGORIES c ON t.$COL_TASK_CAT_ID = c.$COL_CAT_ID"
+        return db.rawQuery(query, null)
+    }
+
+    fun updateTask(id: Int, newName: String, categoryId: Int): Boolean {
+        if (newName.isBlank()) return false
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            put(COL_TASK_NAME, newName)
+            put(COL_TASK_CAT_ID, categoryId)
+        }
+        return try {
+            db.update(TABLE_TASKS, values, "$COL_TASK_ID = ?", arrayOf(id.toString())) > 0
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun deleteTask(taskId: Int): Boolean {
+        val db = this.writableDatabase
+        return db.delete(TABLE_TASKS, "$COL_TASK_ID = ?", arrayOf(taskId.toString())) > 0
     }
 }
