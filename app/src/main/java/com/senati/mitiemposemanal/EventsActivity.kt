@@ -1,13 +1,16 @@
 package com.senati.mitiemposemanal
 
-import android.database.Cursor
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import java.time.DayOfWeek
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class EventsActivity : AppCompatActivity() {
     private lateinit var dbHelper: DatabaseHelper
@@ -16,12 +19,15 @@ class EventsActivity : AppCompatActivity() {
     private lateinit var btnStartEvent: Button
     private lateinit var btnEndEvent: Button
     private lateinit var tvActiveEventStatus: TextView
-    private lateinit var lvEventsHistory: ListView
+    private lateinit var tvWeekRange: TextView
+    private lateinit var tvTotalTime: TextView
+    private lateinit var containerStats: LinearLayout
 
     private var activeEventId: Int = -1
     private var selectedCategoryId: Int = -1
     private val categoryIdsList = ArrayList<Int>()
     private val formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    private val displayDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,12 +39,14 @@ class EventsActivity : AppCompatActivity() {
         btnStartEvent = findViewById(R.id.btnStartEvent)
         btnEndEvent = findViewById(R.id.btnEndEvent)
         tvActiveEventStatus = findViewById(R.id.tvActiveEventStatus)
-        lvEventsHistory = findViewById(R.id.lvEventsHistory)
+        tvWeekRange = findViewById(R.id.tvWeekRange)
+        tvTotalTime = findViewById(R.id.tvTotalTime)
+        containerStats = findViewById(R.id.containerStats)
 
         setupAutoComplete()
         setupCategorySpinner()
         checkActiveEvent()
-        loadEventsHistory()
+        loadWeeklyStats()
 
         btnStartEvent.setOnClickListener {
             val taskName = autoCompleteTask.text.toString().trim()
@@ -49,7 +57,6 @@ class EventsActivity : AppCompatActivity() {
 
             var taskId = dbHelper.getTaskIdByName(taskName)
             if (taskId == -1) {
-                // HU-04: Si no existe, se crea con la categoría seleccionada del Spinner
                 if (spinnerEventCategory.visibility != View.VISIBLE) {
                     spinnerEventCategory.visibility = View.VISIBLE
                     Toast.makeText(this, "La tarea no existe. Elige una categoría y pulsa Iniciar nuevamente.", Toast.LENGTH_LONG).show()
@@ -64,7 +71,6 @@ class EventsActivity : AppCompatActivity() {
                 }
             }
 
-            // HU-05: Iniciar evento con fecha y hora del celular
             val startTime = LocalDateTime.now().format(formatter)
             val eventId = dbHelper.startEvent(taskId, startTime)
             if (eventId != -1L) {
@@ -72,14 +78,13 @@ class EventsActivity : AppCompatActivity() {
                 spinnerEventCategory.visibility = View.GONE
                 autoCompleteTask.text.clear()
                 checkActiveEvent()
-                loadEventsHistory()
+                loadWeeklyStats()
             }
         }
 
         btnEndEvent.setOnClickListener {
             if (activeEventId != -1) {
                 val endTime = LocalDateTime.now().format(formatter)
-                // Calcular duración usando LocalDateTime (requiere Desugaring)
                 val cursor = dbHelper.getActiveEvent()
                 var startTimeStr = ""
                 if (cursor.moveToFirst()) {
@@ -95,7 +100,7 @@ class EventsActivity : AppCompatActivity() {
                     val hours = duration.toHours()
                     val minutes = duration.toMinutes() % 60
                     durationFormatted = if (hours > 0) "$hours h $minutes min" else "$minutes min"
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     durationFormatted = "N/D"
                 }
 
@@ -103,10 +108,16 @@ class EventsActivity : AppCompatActivity() {
                     Toast.makeText(this, "Evento finalizado. Duración: $durationFormatted", Toast.LENGTH_LONG).show()
                     activeEventId = -1
                     checkActiveEvent()
-                    loadEventsHistory()
+                    loadWeeklyStats()
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        checkActiveEvent()
+        loadWeeklyStats()
     }
 
     private fun setupAutoComplete() {
@@ -166,28 +177,108 @@ class EventsActivity : AppCompatActivity() {
             btnStartEvent.isEnabled = true
             btnEndEvent.isEnabled = false
             autoCompleteTask.isEnabled = true
-            setupAutoComplete() // Actualizar lista de autocompletado
+            setupAutoComplete()
         }
         cursor.close()
     }
 
-    private fun loadEventsHistory() {
+    private fun loadWeeklyStats() {
+        val today = LocalDate.now()
+        val monday = today.with(DayOfWeek.MONDAY)
+        val sunday = today.with(DayOfWeek.SUNDAY)
+        tvWeekRange.text = "Semana ${monday.format(displayDateFormatter)} – ${sunday.format(displayDateFormatter)}"
+
+        // 1. Obtener todas las categorías
+        val categoryMap = LinkedHashMap<String, Long>()
+        val catCursor = dbHelper.getAllCategories()
+        while (catCursor.moveToNext()) {
+            val catName = catCursor.getString(catCursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAT_NAME))
+            categoryMap[catName] = 0L
+        }
+        catCursor.close()
+
+        // 2. Procesar eventos de la semana actual
         val cursor = dbHelper.getAllEvents()
-        val historyList = ArrayList<String>()
+        var totalMinutesGlobalForSummary = 0L
 
         while (cursor.moveToNext()) {
-            val tName = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_TASK_NAME))
-            val cName = cursor.getString(cursor.getColumnIndexOrThrow("category_name"))
-            val start = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_EVENT_START))
-            val end = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_EVENT_END))
-            val duration = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_EVENT_DURATION))
+            val endTime = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_EVENT_END))
+            if (endTime.isNullOrEmpty()) continue
 
-            val statusText = if (end.isNullOrEmpty()) "En curso..." else "Fin: $end (Duración: $duration)"
-            historyList.add("• $tName [$cName]\n  Inicio: $start\n  $statusText")
+            val categoryName = cursor.getString(cursor.getColumnIndexOrThrow("category_name"))
+            val startTimeStr = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_EVENT_START))
+            val endTimeStr = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_EVENT_END))
+
+            try {
+                val startDateTime = LocalDateTime.parse(startTimeStr, formatter)
+                val endDateTime = LocalDateTime.parse(endTimeStr, formatter)
+
+                val eventDate = startDateTime.toLocalDate()
+                if (eventDate.isBefore(monday) || eventDate.isAfter(sunday)) {
+                    continue
+                }
+
+                val minutes = Duration.between(startDateTime, endDateTime).toMinutes()
+                if (minutes > 0) {
+                    totalMinutesGlobalForSummary += minutes
+                    val currentMins = categoryMap[categoryName] ?: 0L
+                    categoryMap[categoryName] = currentMins + minutes
+                }
+            } catch (_: Exception) {
+            }
         }
         cursor.close()
 
-        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, historyList)
-        lvEventsHistory.adapter = adapter
+        val totalWeekMinutes = 168 * 60L
+        val totalHours = totalMinutesGlobalForSummary / 60
+        val totalMinsRemainder = totalMinutesGlobalForSummary % 60
+        tvTotalTime.text = "Total Registrado: ${totalHours}h ${totalMinsRemainder}m (de 168h)"
+
+        containerStats.removeAllViews()
+        val inflater = LayoutInflater.from(this)
+        var sumCategoryMinutes = 0L
+
+        for ((cat, mins) in categoryMap) {
+            sumCategoryMinutes += mins
+            val percentageDouble = (mins.toDouble() / totalWeekMinutes.toDouble()) * 100.0
+            val percentageStr = String.format(Locale.US, "%.1f %%", percentageDouble)
+            val progressVal = percentageDouble.toInt().coerceIn(0, 100)
+
+            val rowView = inflater.inflate(R.layout.item_stat_row, containerStats, false)
+            val tvCategory = rowView.findViewById<TextView>(R.id.tvStatCategory)
+            val tvDuration = rowView.findViewById<TextView>(R.id.tvStatDuration)
+            val progressBar = rowView.findViewById<ProgressBar>(R.id.progressStat)
+            val tvPercentage = rowView.findViewById<TextView>(R.id.tvStatPercentage)
+
+            tvCategory.text = cat
+            val hours = mins / 60
+            val mRem = mins % 60
+            tvDuration.text = if (hours > 0) "${hours}h ${mRem}m" else "${mRem}m"
+            progressBar.progress = progressVal
+            tvPercentage.text = "$percentageStr de las 168h semanales"
+
+            containerStats.addView(rowView)
+        }
+
+        // Fila adicional "Sin registrar"
+        val unregisteredMinutes = (totalWeekMinutes - sumCategoryMinutes).coerceAtLeast(0L)
+        val unregisteredPercentageDouble = (unregisteredMinutes.toDouble() / totalWeekMinutes.toDouble()) * 100.0
+        val unregisteredPercentageStr = String.format(Locale.US, "%.1f %%", unregisteredPercentageDouble)
+        val unregisteredProgressVal = unregisteredPercentageDouble.toInt().coerceIn(0, 100)
+
+        val unregView = inflater.inflate(R.layout.item_stat_row, containerStats, false)
+        val tvUnregCategory = unregView.findViewById<TextView>(R.id.tvStatCategory)
+        val tvUnregDuration = unregView.findViewById<TextView>(R.id.tvStatDuration)
+        val unregProgressBar = unregView.findViewById<ProgressBar>(R.id.progressStat)
+        val tvUnregPercentage = unregView.findViewById<TextView>(R.id.tvStatPercentage)
+
+        tvUnregCategory.text = "Sin registrar"
+        val unregHours = unregisteredMinutes / 60
+        val unregMinsRem = unregisteredMinutes % 60
+        tvUnregDuration.text = if (unregHours > 0) "${unregHours}h ${unregMinsRem}m" else "${unregMinsRem}m"
+        unregProgressBar.progress = unregisteredProgressVal
+        tvUnregPercentage.text = "$unregisteredPercentageStr de las 168h semanales"
+
+        containerStats.addView(unregView)
     }
 }

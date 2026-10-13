@@ -71,7 +71,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="v0.2.0"
+                        android:text="v0.3.0"
                         android:textColor="#CBD5E1"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -130,12 +130,29 @@
             android:id="@+id/btnManageEvents"
             android:layout_width="match_parent"
             android:layout_height="64dp"
+            android:layout_marginBottom="14dp"
             android:text="Control de Eventos y Tiempos"
             android:textSize="15sp"
             android:textStyle="bold"
             app:backgroundTint="@color/secondary_academic"
             app:cornerRadius="12dp"
             app:icon="@android:drawable/ic_menu_recent_history"
+            app:iconGravity="textStart"
+            app:iconPadding="12dp"
+            app:iconTint="@color/white"
+            android:textColor="@color/white" />
+
+        <!-- Button Manage Reports (Sprint 3) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnManageReports"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:text="Resumen y Estadísticas"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            app:backgroundTint="@color/primary_academic"
+            app:cornerRadius="12dp"
+            app:icon="@android:drawable/ic_menu_sort_by_size"
             app:iconGravity="textStart"
             app:iconPadding="12dp"
             app:iconTint="@color/white"

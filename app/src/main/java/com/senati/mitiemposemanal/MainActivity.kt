@@ -17,6 +17,7 @@ class MainActivity : AppCompatActivity() {
         val btnCategories = findViewById<Button>(R.id.btnManageCategories)
         val btnTasks = findViewById<Button>(R.id.btnManageTasks)
         val btnEvents = findViewById<Button>(R.id.btnManageEvents)
+        val btnReports = findViewById<Button>(R.id.btnManageReports)
 
         btnCategories.setOnClickListener {
             startActivity(Intent(this, CategoriesActivity::class.java))
@@ -28,6 +29,10 @@ class MainActivity : AppCompatActivity() {
 
         btnEvents.setOnClickListener {
             startActivity(Intent(this, EventsActivity::class.java))
+        }
+
+        btnReports.setOnClickListener {
+            startActivity(Intent(this, ReportsActivity::class.java))
         }
     }
 }

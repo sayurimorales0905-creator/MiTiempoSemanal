@@ -24,6 +24,7 @@
         <activity android:name=".CategoriesActivity" android:exported="false" />
         <activity android:name=".TasksActivity" android:exported="false" />
         <activity android:name=".EventsActivity" android:exported="false" />
+        <activity android:name=".ReportsActivity" android:exported="false" />
     </application>
 
 </manifest>
