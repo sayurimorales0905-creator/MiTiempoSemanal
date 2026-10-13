@@ -118,6 +118,7 @@ class EventsActivity : AppCompatActivity() {
         super.onResume()
         checkActiveEvent()
         loadWeeklyStats()
+        setupCategorySpinner()
     }
 
     private fun setupAutoComplete() {
@@ -188,12 +189,15 @@ class EventsActivity : AppCompatActivity() {
         val sunday = today.with(DayOfWeek.SUNDAY)
         tvWeekRange.text = "Semana ${monday.format(displayDateFormatter)} – ${sunday.format(displayDateFormatter)}"
 
-        // 1. Obtener todas las categorías
-        val categoryMap = LinkedHashMap<String, Long>()
+        // 1. Obtener categorías con sus metas semanales (Sprint 4)
+        val categoryGoalMap = LinkedHashMap<String, Int>()
+        val categoryMinutesMap = HashMap<String, Long>()
         val catCursor = dbHelper.getAllCategories()
         while (catCursor.moveToNext()) {
             val catName = catCursor.getString(catCursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAT_NAME))
-            categoryMap[catName] = 0L
+            val goalHours = catCursor.getInt(catCursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAT_GOAL))
+            categoryGoalMap[catName] = goalHours
+            categoryMinutesMap[catName] = 0L
         }
         catCursor.close()
 
@@ -221,28 +225,30 @@ class EventsActivity : AppCompatActivity() {
                 val minutes = Duration.between(startDateTime, endDateTime).toMinutes()
                 if (minutes > 0) {
                     totalMinutesGlobalForSummary += minutes
-                    val currentMins = categoryMap[categoryName] ?: 0L
-                    categoryMap[categoryName] = currentMins + minutes
+                    val currentMins = categoryMinutesMap[categoryName] ?: 0L
+                    categoryMinutesMap[categoryName] = currentMins + minutes
                 }
             } catch (_: Exception) {
             }
         }
         cursor.close()
 
-        val totalWeekMinutes = 168 * 60L
         val totalHours = totalMinutesGlobalForSummary / 60
         val totalMinsRemainder = totalMinutesGlobalForSummary % 60
-        tvTotalTime.text = "Total Registrado: ${totalHours}h ${totalMinsRemainder}m (de 168h)"
+        tvTotalTime.text = "Total Registrado esta semana: ${totalHours}h ${totalMinsRemainder}m"
 
         containerStats.removeAllViews()
         val inflater = LayoutInflater.from(this)
         var sumCategoryMinutes = 0L
 
-        for ((cat, mins) in categoryMap) {
+        for ((cat, goalHours) in categoryGoalMap) {
+            val mins = categoryMinutesMap[cat] ?: 0L
             sumCategoryMinutes += mins
-            val percentageDouble = (mins.toDouble() / totalWeekMinutes.toDouble()) * 100.0
-            val percentageStr = String.format(Locale.US, "%.1f %%", percentageDouble)
-            val progressVal = percentageDouble.toInt().coerceIn(0, 100)
+
+            val goalMinutes = goalHours * 60L
+            val progressPercentage = if (goalMinutes > 0) ((mins.toDouble() / goalMinutes.toDouble()) * 100.0) else 0.0
+            val progressVal = progressPercentage.toInt().coerceIn(0, 100)
+            val percentageStr = String.format(Locale.US, "%.1f %%", progressPercentage)
 
             val rowView = inflater.inflate(R.layout.item_stat_row, containerStats, false)
             val tvCategory = rowView.findViewById<TextView>(R.id.tvStatCategory)
@@ -250,17 +256,18 @@ class EventsActivity : AppCompatActivity() {
             val progressBar = rowView.findViewById<ProgressBar>(R.id.progressStat)
             val tvPercentage = rowView.findViewById<TextView>(R.id.tvStatPercentage)
 
-            tvCategory.text = cat
+            tvCategory.text = "$cat (Meta: ${goalHours}h)"
             val hours = mins / 60
             val mRem = mins % 60
             tvDuration.text = if (hours > 0) "${hours}h ${mRem}m" else "${mRem}m"
             progressBar.progress = progressVal
-            tvPercentage.text = "$percentageStr de las 168h semanales"
+            tvPercentage.text = "$percentageStr de la meta semanal"
 
             containerStats.addView(rowView)
         }
 
-        // Fila adicional "Sin registrar"
+        // Fila adicional "Sin registrar" (basada en 168 horas semanales)
+        val totalWeekMinutes = 168 * 60L
         val unregisteredMinutes = (totalWeekMinutes - sumCategoryMinutes).coerceAtLeast(0L)
         val unregisteredPercentageDouble = (unregisteredMinutes.toDouble() / totalWeekMinutes.toDouble()) * 100.0
         val unregisteredPercentageStr = String.format(Locale.US, "%.1f %%", unregisteredPercentageDouble)
@@ -272,7 +279,7 @@ class EventsActivity : AppCompatActivity() {
         val unregProgressBar = unregView.findViewById<ProgressBar>(R.id.progressStat)
         val tvUnregPercentage = unregView.findViewById<TextView>(R.id.tvStatPercentage)
 
-        tvUnregCategory.text = "Sin registrar"
+        tvUnregCategory.text = "Sin registrar (168h)"
         val unregHours = unregisteredMinutes / 60
         val unregMinsRem = unregisteredMinutes % 60
         tvUnregDuration.text = if (unregHours > 0) "${unregHours}h ${unregMinsRem}m" else "${unregMinsRem}m"

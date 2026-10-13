@@ -5,23 +5,26 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
     companion object {
         private const val DATABASE_NAME = "mi_tiempo_semanal.db"
-        private const val DATABASE_VERSION = 2 // Subido a versión 2 para eventos
+        private const val DATABASE_VERSION = 3 // Versión 3 con datos de prueba para próxima semana
 
         const val TABLE_CATEGORIES = "categories"
         const val COL_CAT_ID = "id"
         const val COL_CAT_NAME = "name"
+        const val COL_CAT_GOAL = "goal_hours"
 
         const val TABLE_TASKS = "tasks"
         const val COL_TASK_ID = "id"
         const val COL_TASK_NAME = "name"
         const val COL_TASK_CAT_ID = "category_id"
 
-        // Nueva Tabla Eventos (Sprint 2)
         const val TABLE_EVENTS = "events"
         const val COL_EVENT_ID = "id"
         const val COL_EVENT_TASK_ID = "task_id"
@@ -33,7 +36,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
     override fun onCreate(db: SQLiteDatabase?) {
         val createCategoryTable = ("CREATE TABLE $TABLE_CATEGORIES (" +
                 "$COL_CAT_ID INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                "$COL_CAT_NAME TEXT UNIQUE)")
+                "$COL_CAT_NAME TEXT UNIQUE, " +
+                "$COL_CAT_GOAL INTEGER DEFAULT 5)")
 
         val createTaskTable = ("CREATE TABLE $TABLE_TASKS (" +
                 "$COL_TASK_ID INTEGER PRIMARY KEY AUTOINCREMENT, " +
@@ -57,7 +61,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 
     override fun onUpgrade(db: SQLiteDatabase?, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
-            // Creamos la tabla de eventos si actualiza desde la versión 1 sin perder lo demás
             val createEventTable = ("CREATE TABLE IF NOT EXISTS $TABLE_EVENTS (" +
                     "$COL_EVENT_ID INTEGER PRIMARY KEY AUTOINCREMENT, " +
                     "$COL_EVENT_TASK_ID INTEGER, " +
@@ -67,20 +70,54 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                     "FOREIGN KEY($COL_EVENT_TASK_ID) REFERENCES $TABLE_TASKS($COL_TASK_ID))")
             db?.execSQL(createEventTable)
         }
+        if (oldVersion < 3) {
+            try {
+                db?.execSQL("ALTER TABLE $TABLE_CATEGORIES ADD COLUMN $COL_CAT_GOAL INTEGER DEFAULT 5")
+            } catch (_: Exception) {}
+        }
     }
 
     private fun insertInitialCategories(db: SQLiteDatabase?) {
         val defaultCategories = arrayOf("Estudio", "Trabajo", "Descanso", "Ocio")
         for (cat in defaultCategories) {
-            val values = ContentValues().apply { put(COL_CAT_NAME, cat) }
+            val values = ContentValues().apply {
+                put(COL_CAT_NAME, cat)
+                put(COL_CAT_GOAL, 5)
+            }
             db?.insert(TABLE_CATEGORIES, null, values)
         }
+
+        // Tarea inicial de prueba
+        val taskValues = ContentValues().apply {
+            put(COL_TASK_NAME, "Estudio de Programación")
+            put(COL_TASK_CAT_ID, 1)
+        }
+        val taskId = db?.insert(TABLE_TASKS, null, taskValues)
+
+        // Evento de prueba para la próxima semana (para que aparezca en el Spinner de Reportes)
+        try {
+            val today = LocalDate.now()
+            val nextMonday = today.with(DayOfWeek.MONDAY).plusWeeks(1)
+            val startTime = nextMonday.atTime(10, 0).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+            val endTime = nextMonday.atTime(13, 0).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+
+            val eventValues = ContentValues().apply {
+                put(COL_EVENT_TASK_ID, taskId ?: 1L)
+                put(COL_EVENT_START, startTime)
+                put(COL_EVENT_END, endTime)
+                put(COL_EVENT_DURATION, "3 h 0 min")
+            }
+            db?.insert(TABLE_EVENTS, null, eventValues)
+        } catch (_: Exception) {}
     }
 
-    // --- MÉTODOS DE CATEGORÍAS (Sprint 1) ---
-    fun addCategory(name: String): Boolean {
+    // --- MÉTODOS DE CATEGORÍAS ---
+    fun addCategory(name: String, goalHours: Int = 5): Boolean {
         val db = this.writableDatabase
-        val values = ContentValues().apply { put(COL_CAT_NAME, name) }
+        val values = ContentValues().apply {
+            put(COL_CAT_NAME, name)
+            put(COL_CAT_GOAL, goalHours)
+        }
         return try {
             db.insertOrThrow(TABLE_CATEGORIES, null, values) != -1L
         } catch (e: Exception) { false }
@@ -99,6 +136,14 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         } catch (e: Exception) { false }
     }
 
+    fun updateCategoryGoal(categoryId: Int, goalHours: Int): Boolean {
+        val db = this.writableDatabase
+        val values = ContentValues().apply { put(COL_CAT_GOAL, goalHours) }
+        return try {
+            db.update(TABLE_CATEGORIES, values, "$COL_CAT_ID = ?", arrayOf(categoryId.toString())) > 0
+        } catch (e: Exception) { false }
+    }
+
     fun deleteCategory(categoryId: Int): Boolean {
         val db = this.writableDatabase
         val cursor = db.rawQuery("SELECT * FROM $TABLE_TASKS WHERE $COL_TASK_CAT_ID = ?", arrayOf(categoryId.toString()))
@@ -110,7 +155,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         return db.delete(TABLE_CATEGORIES, "$COL_CAT_ID = ?", arrayOf(categoryId.toString())) > 0
     }
 
-    // --- MÉTODOS DE TAREAS (Sprint 1 & 2) ---
+    // --- MÉTODOS DE TAREAS ---
     fun addTask(name: String, categoryId: Int): Long {
         if (name.isBlank()) return -1L
         val db = this.writableDatabase
@@ -125,12 +170,11 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 
     fun getAllTasksWithCategory(): Cursor {
         val db = this.readableDatabase
-        val query = "SELECT t.$COL_TASK_ID, t.$COL_TASK_NAME, c.$COL_CAT_NAME AS category_name, t.$COL_TASK_CAT_ID " +
+        val query = "SELECT t.$COL_TASK_ID, t.$COL_TASK_NAME, c.$COL_CAT_NAME AS category_name, t.$COL_TASK_CAT_ID, c.$COL_CAT_GOAL " +
                 "FROM $TABLE_TASKS t INNER JOIN $TABLE_CATEGORIES c ON t.$COL_TASK_CAT_ID = c.$COL_CAT_ID"
         return db.rawQuery(query, null)
     }
 
-    // Buscar tareas por nombre (HU-03)
     fun searchTasks(keyword: String): Cursor {
         val db = this.readableDatabase
         val query = "SELECT t.$COL_TASK_ID, t.$COL_TASK_NAME, c.$COL_CAT_NAME AS category_name, t.$COL_TASK_CAT_ID " +
@@ -139,7 +183,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         return db.rawQuery(query, arrayOf("%$keyword%"))
     }
 
-    // Buscar tarea exacta por nombre
     fun getTaskIdByName(name: String): Int {
         val db = this.readableDatabase
         val cursor = db.rawQuery("SELECT $COL_TASK_ID FROM $TABLE_TASKS WHERE $COL_TASK_NAME = ?", arrayOf(name))
@@ -168,7 +211,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         return db.delete(TABLE_TASKS, "$COL_TASK_ID = ?", arrayOf(taskId.toString())) > 0
     }
 
-    // --- MÉTODOS DE EVENTOS (HU-05) ---
+    // --- MÉTODOS DE EVENTOS ---
     fun startEvent(taskId: Int, startTime: String): Long {
         val db = this.writableDatabase
         val values = ContentValues().apply {
@@ -201,7 +244,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 
     fun getAllEvents(): Cursor {
         val db = this.readableDatabase
-        val query = "SELECT e.$COL_EVENT_ID, t.$COL_TASK_NAME, c.$COL_CAT_NAME AS category_name, e.$COL_EVENT_START, e.$COL_EVENT_END, e.$COL_EVENT_DURATION " +
+        val query = "SELECT e.$COL_EVENT_ID, t.$COL_TASK_NAME, c.$COL_CAT_NAME AS category_name, e.$COL_EVENT_START, e.$COL_EVENT_END, e.$COL_EVENT_DURATION, c.$COL_CAT_GOAL " +
                 "FROM $TABLE_EVENTS e " +
                 "INNER JOIN $TABLE_TASKS t ON e.$COL_EVENT_TASK_ID = t.$COL_TASK_ID " +
                 "INNER JOIN $TABLE_CATEGORIES c ON t.$COL_TASK_CAT_ID = c.$COL_CAT_ID " +

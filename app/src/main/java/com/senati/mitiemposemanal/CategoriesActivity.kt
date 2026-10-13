@@ -25,7 +25,7 @@ class CategoriesActivity : AppCompatActivity() {
         btnAddCategory.setOnClickListener {
             val name = etCategoryName.text.toString().trim()
             if (name.isNotEmpty()) {
-                val success = dbHelper.addCategory(name)
+                val success = dbHelper.addCategory(name, 5) // Meta por defecto de 5 horas
                 if (success) {
                     etCategoryName.text.clear()
                     loadCategoriesList()
@@ -46,29 +46,32 @@ class CategoriesActivity : AppCompatActivity() {
 
         while (cursor.moveToNext()) {
             categoryIds.add(cursor.getInt(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAT_ID)))
-            categoryList.add(cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAT_NAME)))
+            val name = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAT_NAME))
+            val goal = cursor.getInt(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAT_GOAL))
+            categoryList.add("$name · Meta: ${goal}h semanales")
         }
         cursor.close()
 
         val adapter = object : ArrayAdapter<String>(this, R.layout.item_row, R.id.tvItemTitle, categoryList) {}
         lvCategories.adapter = adapter
 
-        // Al hacer clic, permite editar o eliminar con confirmación
         lvCategories.setOnItemClickListener { _, _, position, _ ->
             val catId = categoryIds[position]
-            val catName = categoryList[position]
+            val fullText = categoryList[position]
+            val catName = fullText.split(" · ")[0]
             showCategoryOptionsDialog(catId, catName)
         }
     }
 
     private fun showCategoryOptionsDialog(id: Int, currentName: String) {
-        val options = arrayOf("Editar", "Eliminar")
+        val options = arrayOf("Editar Nombre", "Definir Meta Semanal (Horas)", "Eliminar")
         AlertDialog.Builder(this)
             .setTitle("Opciones para: $currentName")
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> showEditDialog(id, currentName)
-                    1 -> confirmDeleteCategory(id, currentName)
+                    1 -> showGoalDialog(id, currentName)
+                    2 -> confirmDeleteCategory(id, currentName)
                 }
             }.show()
     }
@@ -87,6 +90,29 @@ class CategoriesActivity : AppCompatActivity() {
                         Toast.makeText(this, "Categoría actualizada", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(this, "El nombre ya existe", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun showGoalDialog(id: Int, currentName: String) {
+        val input = EditText(this)
+        input.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        input.hint = "Ej. 10 (horas semanales)"
+        AlertDialog.Builder(this)
+            .setTitle("Meta Semanal para: $currentName")
+            .setView(input)
+            .setPositiveButton("Guardar Meta") { _, _ ->
+                val goalStr = input.text.toString().trim()
+                if (goalStr.isNotEmpty()) {
+                    val goalHours = goalStr.toIntOrNull() ?: 5
+                    if (dbHelper.updateCategoryGoal(id, goalHours)) {
+                        loadCategoriesList()
+                        Toast.makeText(this, "Meta actualizada a ${goalHours}h", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "Error al actualizar meta", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
